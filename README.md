@@ -1,8 +1,9 @@
 # Big_Data_Project_ETL_Process
-Requirements
+Requirements<br>
 Use the raw data of online streaming video data to construct a star schema Data Warehouse which will be used to track VideoStarts over time.
-Show the SQL queries you would use to populate the Data Warehouse Dimensions and Fact table.
-Stages involved in the ETL Process
+Show the SQL queries you would use to populate the Data Warehouse Dimensions and Fact table.<br>
+
+Stages involved in the ETL Process<br>
 1.	Design the star schema.
 2.	Create a database, schema and a source table in Snowflake. The source table is used to save the raw data.
 3.	Create a file format specifically for the csv raw data file.
