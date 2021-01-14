@@ -92,29 +92,41 @@ CREATE OR REPLACE STREAM data_project.dev.stream_src_video ON TABLE data_project
 -----create a view to save the transformed data
 DROP VIEW If Exists data_project.dev.vw_src_video;
 
-CREATE OR REPLACE VIEW data_project.dev.vw_src_video AS
+-- Create stream to watch on source table
+create or replace stream data_project.dev.stream_src_credit on table data_project.dev.src_video; 
+                      
+
+-- create task to parse source data
+--  only keep video_events contain 206 and discard title.split('|').count=1
+CREATE OR REPLACE task DATALAKE_DEMO.DEV.task_video 
+  warehouse = COMPUTE_WH
+  schedule = '60 minute' 
+when system$stream_has_data('data_project.dev.stream_src_credit')
+AS
 (
-select 
-    DateTime::timestamp as Date_Time,
-    year(Date_Time) as Year,
-    quarter(Date_time) as Quarter,
-    month(Date_Time) as Month,
-    week(Date_Time) as Week,
-    dayofweek(Date_Time) as Day_of_week,
-    hour(Date_Time) as Hour,
-    minute(Date_Time) as MINUTE,
-    case when lower(trim(split(videotitle,'|')[0]) like '%iphone%' then 'iPhone'
-         when lower(trim(split(videotitle,'|')[0]) like '%android%' then 'Android Phone'
-         when lower(trim(split(videotitle,'|')[0]) like '%ipad%' then 'iPad'
-    else 'Desktop'
-    end as platform,  
-    initcap(replace(split(videotitle,'|')[0],'""','')) as site, 
-    SPLIT_PART(videotitle,'|',-1) as video,
-    events
-from data_project.dev.src_video
-where events like '%206%' and ARRAY_SIZE(split(videotitle,'|')) >1
-  );
-  
+  CREATE OR REPLACE VIEW data_project.dev.vw_src_video AS
+  (
+    select 
+        DateTime::timestamp as Date_Time,
+        year(Date_Time) as Year,
+        quarter(Date_time) as Quarter,
+        month(Date_Time) as Month,
+        week(Date_Time) as Week,
+        dayofweek(Date_Time) as Day_of_week,
+        hour(Date_Time) as Hour,
+        minute(Date_Time) as MINUTE,
+        case when lower(trim(split(videotitle,'|')[0]) like '%iphone%' then 'iPhone'
+             when lower(trim(split(videotitle,'|')[0]) like '%android%' then 'Android Phone'
+             when lower(trim(split(videotitle,'|')[0]) like '%ipad%' then 'iPad'
+        else 'Desktop'
+        end as platform,  
+        initcap(replace(split(videotitle,'|')[0],'""','')) as site, 
+        SPLIT_PART(videotitle,'|',-1) as video,
+        events
+    from data_project.dev.src_video
+    where events like '%206%' and ARRAY_SIZE(split(videotitle,'|')) >1
+    )
+);
   
   ---check the view
   Select * from data_project.dev.vw_src_video limit 1000; 
