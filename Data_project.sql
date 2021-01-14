@@ -20,7 +20,7 @@ field_optionally_enclosed_by='"';
 --create an external s3 stage:
 create or replace stage data_project.DEV.stage_src_video
 url='s3://yan-luo-test-bucket-2020/data_project/'
-credentials=(AWS_KEY_ID='AKIAUVHYSQANHDAFZVOI' AWS_SECRET_KEY='jG/6EGNp2HyogDklQTNwW731hsSYVWr0CHZx8NKE')
+credentials=(AWS_KEY_ID='XXXXXXXXXXX' AWS_SECRET_KEY='XXXXXXXXXXXXXXXXX')
 ;
 
 --verify the stage is created:
