@@ -5,9 +5,9 @@ create database data_project;
 create schema dev;
 
 create or replace table data_project.dev.src_video (
-    DateTime text,
-    VideoTitle text,
-    events text
+    DateTime varchar(50),
+    VideoTitle varchar(200),
+    events varchar(200)
 );
 
 --create file format
@@ -15,13 +15,12 @@ create or replace file format data_project.dev.format_src_video
 type='csv'
 field_delimiter = ','
 skip_header =1
-ESCAPE = '\\'
 field_optionally_enclosed_by='"';
 
 --create an external s3 stage:
 create or replace stage data_project.DEV.stage_src_video
 url='s3://yan-luo-test-bucket-2020/data_project/'
-credentials=(AWS_KEY_ID='XXXXXXXXXXX' AWS_SECRET_KEY='XXXXXXXXXX')
+credentials=(AWS_KEY_ID='AKIAUVHYSQANHDAFZVOI' AWS_SECRET_KEY='jG/6EGNp2HyogDklQTNwW731hsSYVWr0CHZx8NKE')
 ;
 
 --verify the stage is created:
@@ -32,7 +31,7 @@ create or replace pipe data_project.dev.pipe_src_video auto_ingest=true
 as copy into data_project.dev.src_video
 from @data_project.dev.stage_src_video
 file_format = (format_name = data_project.dev.format_src_video)
-;
+on_error = 'skip_file';
 
 --verify the pipe is created using:
 show pipes;
@@ -52,37 +51,47 @@ select * from table(validate_pipe_load(
   pipe_name=>'data_project.dev.pipe_src_video',
   start_time=>dateadd(hour, -1, current_timestamp())));
 
----Data auditing-----
-select max(length(datetime)), max(length(videotitle)), max(length(events)) from src_video;
+///*
+//---The below auditing and validation is done for setting up and testing data pipeline
+//---Data auditing-----
+//select max(length(datetime)), max(length(videotitle)), max(length(events)) from src_video;
+//
+//---validate the data----
+//select count(*) from data_project.dev.src_video
+//where contains(events,'206')
+//union all
+//select count(*) from data_project.dev.src_video
+//where events like '%206%'
+//union all
+//select count(*) from data_project.dev.src_video
+//;
+//
+//select * from data_project.dev.src_video
+//where videotitle like '%\\%';
+//
+//select * from data_project.dev.src_video
+//where ARRAY_SIZE(split(videotitle,'|')) = 1;
+//
+//select distinct split(videotitle,'|')[0] as platform
+//from data_project.dev.src_video;
+//
+//
+//select distinct SPLIT_PART(videotitle,'|',-1)as video_title
+//from data_project.dev.src_video;
+//
+//
+//select datetime::timestamp as Date_Time, minute(Date_Time) from data_project.dev.src_video limit 100;
+//---------------------The above auditing and validation is done for setting up and testing data pipeline 
+//*/
 
----validate the data----
-select count(*) from data_project.dev.src_video
-where contains(events,'206')
-union all
-select count(*) from data_project.dev.src_video
-where events like '%206%'
-union all
-select count(*) from data_project.dev.src_video
-;
+----create scream to watch change on source table
+CREATE OR REPLACE STREAM data_project.dev.stream_src_video ON TABLE data_project.dev.src_video;
 
-select * from data_project.dev.src_video
-where videotitle like '%\\%';
-
-select * from data_project.dev.src_video
-where ARRAY_SIZE(split(videotitle,'|')) = 1;
-
-select distinct split(videotitle,'|')[0] as platform
-from data_project.dev.src_video;
-
-
-select distinct SPLIT_PART(videotitle,'|',-1)as video_title
-from data_project.dev.src_video;
-
-
-select datetime::timestamp as Date_Time, minute(Date_Time) from data_project.dev.src_video limit 100;
 
 
 -----create a view to save the transformed data
+DROP VIEW If Exists data_project.dev.vw_src_video;
+
 CREATE OR REPLACE VIEW data_project.dev.vw_src_video AS
 (
 select 
@@ -94,9 +103,9 @@ select
     dayofweek(Date_Time) as Day_of_week,
     hour(Date_Time) as Hour,
     minute(Date_Time) as MINUTE,
-    case when split(videotitle,'|')[0] like '%iphone%' then 'iPhone'
-         when split(videotitle,'|')[0] like '%Android%' then 'Android Phone'
-         when split(videotitle,'|')[0] like '%ipad%' then 'iPad'
+    case when lower(trim(split(videotitle,'|')[0]) like '%iphone%' then 'iPhone'
+         when lower(trim(split(videotitle,'|')[0]) like '%android%' then 'Android Phone'
+         when lower(trim(split(videotitle,'|')[0]) like '%ipad%' then 'iPad'
     else 'Desktop'
     end as platform,  
     initcap(replace(split(videotitle,'|')[0],'""','')) as site, 
@@ -109,10 +118,13 @@ where events like '%206%' and ARRAY_SIZE(split(videotitle,'|')) >1
   
   ---check the view
   Select * from data_project.dev.vw_src_video limit 1000; 
+  Select count(distinct DATETIME) from data_project.dev.src_video
+  union
+  Select count(DATETIME) from data_project.dev.src_video;
   
   
   ---create dimension table DimPlatform
-#DROP TABLE data_project.DEV.DimPlatform;
+--DROP TABLE data_project.DEV.DimPlatform;
 
 CREATE OR REPLACE TABLE data_project.dev.DimPlatform
 (
@@ -134,12 +146,12 @@ DROP TABLE data_project.dev.DimVideo;
 
 CREATE OR REPLACE TABLE data_project.dev.DimVideo
 (
-  VideoTitle_Skey number AUTOINCREMENT PRIMARY KEY,
+  Video_Skey number AUTOINCREMENT PRIMARY KEY,
   video VARCHAR2(200 BYTE) not null
 );
 
 merge into data_project.dev.DimVideo dest
-  using (select distinct video_title from data_project.dev.vw_src_video) src
+  using (select distinct video from data_project.dev.vw_src_video) src
   on src.video = dest.video
   when not matched
   then insert (
@@ -149,7 +161,7 @@ merge into data_project.dev.DimVideo dest
 
 ---create dimension table DimSite
 
-#The DROP TABLE IF EXISTS data_project.DEV.DimSite;
+--The DROP TABLE IF EXISTS data_project.DEV.DimSite;
 
 CREATE OR REPLACE TABLE data_project.DEV.DimSite
 (
@@ -169,8 +181,7 @@ merge into data_project.dev.DimSite dest
 ---create dimension table DimDate
 CREATE OR REPLACE TABLE data_project.DEV.DimDate
 (
-  DateTime_Skey number AUTOINCREMENT primary key,
-  Date_Time datetime not null,
+  DateTime_Skey DATETIME primary key,
   Year int Not null,
   Quarter int Not null,
   Month int not null,
@@ -181,42 +192,46 @@ CREATE OR REPLACE TABLE data_project.DEV.DimDate
 );
 
 merge into data_project.dev.DimDate dest
-  using (SELECT DISTINCT Date_Time,Year, Quarter,Month,week,Day_of_week,hour,minute FROM data_project.dev.vw_src_video) src
-  on src.Date_Time = dest.Date_Time
+  using (SELECT DISTINCT Date_Time::timestamp_ntz as DateTime_Skey,Year, Quarter,Month,week,Day_of_week,hour,minute FROM data_project.dev.vw_src_video) src
+  on src.DateTime_Skey = dest.DateTime_Skey
   when not matched
   then insert (
-      Date_Time,Year, Quarter,Month,week,Day_of_week,hour,minute)
+      DateTime_Skey,Year, Quarter,Month,week,Day_of_week,hour,minute)
       values (
-          src.Date_Time, src.Year, src.Quarter, src.Month, src.week, src.day_of_week, src.hour, src.minute);
+          src.DateTime_Skey, src.Year, src.Quarter, src.Month, src.week, src.day_of_week, src.hour, src.minute);
           
 ----create fact table VideoStart_fact
+drop table if exists data_project.dev.VideoStart_fact;
+                    
 Create or replace table data_project.dev.VideoStart_fact(
-    DataTime_Skey Number AUTOINCREMENT primary key,
+    DateTime_Skey DATETIME not null,
     platform_Skey number not null,
     video_Skey number not null,
     site_Skey number not null,
-    event text not null
+    events text not null,
+    PRIMARY KEY (DateTime_Skey,platform_Skey, video_Skey, site_Skey)
     );
 
 
 
 merge into data_project.dev.VideoStart_fact dest
     using (
-        select P.platform_Skey, D.DataTime_Skey, V.video_Skey, S.site_Skey, M.event from  data_project.dev.vw_src_video as M
+        select D.DateTime_Skey, P.platform_Skey, V.video_Skey, S.site_Skey, M.events from  data_project.dev.vw_src_video as M
+        left join data_project.dev.dimdate as D on D.DateTime_Skey = M.Date_Time::timestamp_ntz
         left join data_project.dev.dimplatform as P on P.PLATFORM = M.PLATFORM
         left join data_project.dev.dimvideo as V on V.Video = M.video
         left join data_project.dev.dimSite as S on S.site = M.site
     ) src
     on src.platform_Skey = dest.platform_Skey
-    and src.DataTime_Skey = dest.DataTime_Skey
+    and src.DateTime_Skey = dest.DateTime_Skey
     and src.video_Skey = dest.video_Skey
     and src.site_Skey = dest.site_Skey
     and src.events = dest.events
      when not matched
       then insert (
-          platform_Skey,DataTime_Skey, video_Skey,site_Skey,events)
+          platform_Skey,DateTime_Skey, video_Skey,site_Skey,events)
           values (
-              src.platform_Skey, src.DataTime_Skey, src.video_Skey, src.site_Skey, src.events);
+              src.platform_Skey, src.DateTime_Skey, src.video_Skey, src.site_Skey, src.events);
               
  --select count(*) from data_project.dev.vw_src_video;
     
